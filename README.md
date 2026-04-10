@@ -6,7 +6,7 @@
 
 部署完成后可直接通过 GitHub Pages 在线体验。
 
-- Live Demo: `待部署后自动补充`
+- Live Demo: https://luolinjing888.github.io/naruto-rasengan-gesture-effects/
 
 ## Features
 
