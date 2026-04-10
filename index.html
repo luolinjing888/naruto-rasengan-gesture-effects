@@ -1,0 +1,1135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🌀 Rasengan - Naruto Enhanced</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            background: radial-gradient(circle at center, #1b2740 0%, #0a1020 50%, #050812 100%);
+        }
+
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            --shake-x: 0px;
+            --shake-y: 0px;
+            transform: translate(var(--shake-x), var(--shake-y));
+        }
+
+        #video,
+        #canvas,
+        #effectCanvas,
+        #lightCanvas {
+            position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
+        }
+
+        #video {
+            object-fit: cover;
+            transform: scaleX(-1);
+            z-index: 1;
+        }
+
+        #canvas,
+        #effectCanvas,
+        #lightCanvas {
+            transform: scaleX(-1);
+        }
+
+        #canvas { z-index: 2; }
+        #effectCanvas { z-index: 3; pointer-events: none; }
+        #lightCanvas { z-index: 4; pointer-events: none; mix-blend-mode: screen; }
+
+        #impactOverlay {
+            position: absolute;
+            inset: 0;
+            z-index: 5;
+            pointer-events: none;
+        }
+
+        #info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: white;
+            background: rgba(0, 0, 0, 0.72);
+            padding: 18px;
+            border-radius: 12px;
+            font-size: 14px;
+            z-index: 100;
+            max-width: 320px;
+            border: 1px solid rgba(90, 196, 255, 0.35);
+            backdrop-filter: blur(10px);
+        }
+
+        #info h2 {
+            margin-bottom: 8px;
+            color: #73d6ff;
+            font-size: 20px;
+        }
+
+        #info p {
+            margin: 6px 0;
+            line-height: 1.45;
+        }
+
+        .gesture-status {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.75);
+            padding: 14px 24px;
+            border-radius: 999px;
+            color: #7edcff;
+            font-size: 17px;
+            font-weight: 700;
+            z-index: 100;
+            border: 1px solid rgba(126, 220, 255, 0.55);
+            box-shadow: 0 0 18px rgba(79, 195, 247, 0.16);
+        }
+
+        .loading {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 24px;
+            z-index: 200;
+            background: rgba(0, 0, 0, 0.88);
+            padding: 28px 42px;
+            border-radius: 16px;
+            text-align: center;
+            border: 1px solid rgba(126, 220, 255, 0.3);
+        }
+
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            background: rgba(0, 0, 0, 0.72);
+            padding: 14px 22px;
+            border-radius: 12px;
+            display: flex;
+            gap: 14px;
+            align-items: center;
+            color: #fff;
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(126, 220, 255, 0.18);
+        }
+
+        .controls input[type="range"] {
+            width: 150px;
+        }
+
+        .controls .value {
+            color: #73d6ff;
+            min-width: 42px;
+            font-weight: 700;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <video id="video" autoplay playsinline></video>
+        <canvas id="canvas"></canvas>
+        <canvas id="effectCanvas"></canvas>
+        <canvas id="lightCanvas"></canvas>
+        <canvas id="impactOverlay"></canvas>
+
+        <div id="info">
+            <h2>🌀 Rasengan Enhanced</h2>
+            <p><strong>Gesture:</strong> Open your palm, hold to charge, then push forward to launch</p>
+            <p>• Step 1: hold your palm open and steady</p>
+            <p>• Step 2: wait until the Rasengan is fully charged</p>
+            <p>• Step 3: push your hand clearly toward the camera</p>
+            <p>• Release to let the chakra collapse and fade</p>
+            <p style="margin-top: 10px; color: #ffd36f;">⚡ Naruto-style chakra layers enabled</p>
+            <p style="font-size: 12px; opacity: 0.72;">Video core + spiral lines + particles + palm glow</p>
+        </div>
+
+        <div class="gesture-status" id="gestureStatus">Waiting for gesture...</div>
+
+        <div class="controls">
+            <label>Effect Size:</label>
+            <input type="range" id="sizeSlider" min="45" max="130" value="76" oninput="updateSize(this.value)">
+            <span class="value" id="sizeValue">76</span>
+        </div>
+
+        <audio id="chargeSfx" preload="auto" src="./assets/sfx/charge.mp3"></audio>
+        <audio id="launchSfx" preload="auto" src="./assets/sfx/launch.mp3"></audio>
+        <audio id="impactSfx" preload="auto" src="./assets/sfx/impact.mp3"></audio>
+
+        <div class="loading" id="loading">
+            Loading MediaPipe Hands...<br>
+            <small style="font-size: 14px; opacity: 0.7;">Preparing the chakra system</small>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+    <script>
+        let effectSize = 76;
+        function updateSize(value) {
+            effectSize = parseInt(value, 10);
+            document.getElementById('sizeValue').textContent = value;
+        }
+
+        class ChakraParticle {
+            constructor() {
+                this.reset(0, 0, 1);
+            }
+
+            reset(x, y, radius) {
+                const angle = Math.random() * Math.PI * 2;
+                const orbit = radius * (0.55 + Math.random() * 0.95);
+                this.seed = Math.random() * 1000;
+                this.angle = angle;
+                this.orbit = orbit;
+                this.size = 1 + Math.random() * 4;
+                this.speed = 0.015 + Math.random() * 0.05;
+                this.alpha = 0.2 + Math.random() * 0.75;
+                this.pull = 0.82 + Math.random() * 0.35;
+                this.x = x + Math.cos(angle) * orbit;
+                this.y = y + Math.sin(angle) * orbit;
+            }
+
+            update(centerX, centerY, radius, energy, tick) {
+                this.angle += this.speed * (0.9 + energy * 1.4);
+                const wobble = Math.sin(tick * 0.03 + this.seed) * radius * 0.08;
+                const currentOrbit = this.orbit * (0.7 + energy * 0.6) + wobble;
+                this.x = centerX + Math.cos(this.angle) * currentOrbit;
+                this.y = centerY + Math.sin(this.angle) * currentOrbit;
+                this.alpha = 0.18 + energy * 0.85;
+            }
+
+            draw(ctx, energy) {
+                ctx.save();
+                ctx.globalAlpha = this.alpha * 0.7;
+                ctx.fillStyle = energy > 0.75 ? '#d7ffff' : '#7edcff';
+                ctx.shadowBlur = 12 + energy * 18;
+                ctx.shadowColor = '#54ccff';
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size * (0.7 + energy * 0.55), 0, Math.PI * 2);
+                ctx.fill();
+                ctx.restore();
+            }
+        }
+
+        class ChakraAudioEngine {
+            constructor() {
+                this.charge = document.getElementById('chargeSfx');
+                this.launch = document.getElementById('launchSfx');
+                this.impact = document.getElementById('impactSfx');
+                this.enabled = false;
+                this.chargeLooping = false;
+
+                [this.charge, this.launch, this.impact].forEach((audio) => {
+                    if (!audio) return;
+                    audio.volume = 0.7;
+                    audio.preload = 'auto';
+                });
+
+                if (this.charge) {
+                    this.charge.loop = true;
+                    this.charge.volume = 0;
+                }
+                if (this.launch) this.launch.volume = 0.85;
+                if (this.impact) this.impact.volume = 0.95;
+            }
+
+            resume() {
+                this.enabled = true;
+            }
+
+            safePlay(audio) {
+                if (!this.enabled || !audio) return;
+                audio.currentTime = 0;
+                audio.play().catch(() => {});
+            }
+
+            fade(audio, target, time = 120) {
+                if (!audio) return;
+                const start = audio.volume;
+                const begin = performance.now();
+                const step = () => {
+                    const t = Math.min(1, (performance.now() - begin) / time);
+                    audio.volume = start + (target - start) * t;
+                    if (t < 1) requestAnimationFrame(step);
+                };
+                requestAnimationFrame(step);
+            }
+
+            playCharge(level) {
+                if (!this.enabled || !this.charge) return;
+                const target = Math.min(0.55, Math.max(0, level * 0.45));
+                if (level > 0.18) {
+                    if (!this.chargeLooping) {
+                        this.charge.currentTime = 0;
+                        this.charge.play().catch(() => {});
+                        this.chargeLooping = true;
+                    }
+                    this.fade(this.charge, target, 90);
+                } else if (this.chargeLooping) {
+                    this.fade(this.charge, 0, 120);
+                }
+            }
+
+            stopCharge() {
+                if (!this.charge) return;
+                this.fade(this.charge, 0, 120);
+            }
+
+            playBurst() {
+                if (!this.enabled) return;
+                if (this.launch) {
+                    this.launch.currentTime = 0.08;
+                    this.launch.play().catch(() => {});
+                }
+            }
+
+            playPushCue() {
+                if (!this.enabled || !this.launch) return;
+                this.launch.currentTime = 0.03;
+                this.launch.volume = 0.45;
+                this.launch.play().catch(() => {});
+                setTimeout(() => {
+                    if (this.launch) this.launch.volume = 0.85;
+                }, 120);
+            }
+
+            playLaunch() {
+                this.safePlay(this.launch);
+            }
+
+            playImpact() {
+                this.safePlay(this.impact);
+            }
+        }
+
+        class RasenganVideoEffect {
+            constructor(canvas, ctx, lightCanvas, lightCtx) {
+                this.canvas = canvas;
+                this.ctx = ctx;
+                this.lightCanvas = lightCanvas;
+                this.lightCtx = lightCtx;
+                this.video = document.createElement('video');
+                this.video.src = './assets/rasengan-alpha.webm';
+                this.video.loop = true;
+                this.video.muted = true;
+                this.video.preload = 'auto';
+                this.video.playsInline = true;
+                this.video.crossOrigin = 'anonymous';
+
+                this.videoReady = false;
+                this.active = false;
+                this.position = { x: 0, y: 0 };
+                this.targetPosition = { x: 0, y: 0 };
+                this.rotation = 0;
+                this.smoothRotation = 0;
+                this.opacity = 0;
+                this.scale = 0.56;
+                this.targetScale = 0.56;
+                this.energy = 0;
+                this.charge = 0;
+                this.state = 'idle';
+                this.tick = 0;
+                this.lastSeenAt = 0;
+                this.holdMs = 260;
+                this.burst = 0;
+                this.launch = 0;
+                this.launchVector = { x: 0, y: 0 };
+                this.shockwave = 0;
+                this.flash = 0;
+                this.pushTrail = [];
+                this.particles = Array.from({ length: 26 }, () => new ChakraParticle());
+
+                const markReady = () => this.videoReady = true;
+                this.video.addEventListener('loadeddata', markReady);
+                this.video.addEventListener('canplay', markReady);
+                this.video.addEventListener('canplaythrough', markReady);
+                this.video.load();
+            }
+
+            trigger(x, y, rotation, stability = 1, burstBoost = 0, shouldLaunch = false) {
+                this.active = true;
+                this.targetPosition.x = x;
+                this.targetPosition.y = y;
+                this.rotation = rotation;
+                this.lastSeenAt = performance.now();
+                this.energy = Math.max(this.energy, Math.min(1, stability));
+                this.burst = Math.max(this.burst, burstBoost);
+
+                if (this.position.x === 0 && this.position.y === 0) {
+                    this.position.x = x;
+                    this.position.y = y;
+                }
+
+                if (shouldLaunch && burstBoost > 0.2 && this.charge >= 0.96) {
+                    this.state = 'launch';
+                    this.launch = Math.max(this.launch, burstBoost);
+                    this.shockwave = Math.max(this.shockwave, burstBoost);
+                    this.flash = Math.max(this.flash, burstBoost * 0.9);
+                    this.launchVector = {
+                        x: Math.cos(rotation - Math.PI / 2) * burstBoost,
+                        y: Math.sin(rotation - Math.PI / 2) * burstBoost
+                    };
+                }
+
+                if (this.charge < 1) {
+                    this.state = 'charging';
+                    this.charge = Math.min(1, this.charge + 0.08 + stability * 0.06 + burstBoost * 0.03);
+                    this.targetScale = 0.58 + this.charge * 0.48 + burstBoost * 0.12;
+                } else {
+                    this.state = burstBoost > 0.08 ? 'burst' : 'active';
+                    this.targetScale = 1 + Math.sin(this.tick * 0.07) * 0.04 + burstBoost * 0.28;
+                }
+
+                if (this.videoReady && (this.video.paused || this.video.ended)) {
+                    if (this.video.currentTime >= (this.video.duration || 0) - 0.04 || this.video.currentTime === 0) {
+                        this.video.currentTime = 0;
+                    }
+                    this.video.play().catch(() => {});
+                }
+            }
+
+            update() {
+                const now = performance.now();
+                const stillActive = this.active && (now - this.lastSeenAt) < this.holdMs;
+                this.tick++;
+
+                const prevX = this.position.x;
+                const prevY = this.position.y;
+                this.position.x += (this.targetPosition.x - this.position.x) * (0.26 + this.burst * 0.08);
+                this.position.y += (this.targetPosition.y - this.position.y) * (0.26 + this.burst * 0.08);
+
+                if (this.launch > 0.01) {
+                    const launchDistance = 14 + this.launch * 42;
+                    this.position.x += this.launchVector.x * launchDistance;
+                    this.position.y += this.launchVector.y * launchDistance;
+                }
+
+                const velocityX = this.position.x - prevX;
+                const velocityY = this.position.y - prevY;
+                this.pushTrail.unshift({
+                    x: this.position.x,
+                    y: this.position.y,
+                    vx: velocityX,
+                    vy: velocityY,
+                    burst: this.burst,
+                    alpha: this.opacity
+                });
+                if (this.pushTrail.length > 8) this.pushTrail.length = 8;
+
+                if (stillActive) {
+                    this.opacity += (1 - this.opacity) * (0.22 + this.burst * 0.06);
+                } else {
+                    this.charge += (0 - this.charge) * 0.12;
+                    this.energy += (0 - this.energy) * 0.12;
+                    this.opacity += (0 - this.opacity) * 0.1;
+                    this.targetScale = Math.max(0.5, this.targetScale * 0.985);
+                    if (this.opacity < 0.02) {
+                        this.opacity = 0;
+                        this.active = false;
+                        this.state = 'idle';
+                    }
+                }
+
+                this.burst *= stillActive ? 0.88 : 0.8;
+                this.launch *= stillActive ? 0.84 : 0.72;
+                this.shockwave *= 0.82;
+                this.flash *= 0.72;
+                this.scale += (this.targetScale - this.scale) * (0.2 + this.burst * 0.04 + this.launch * 0.03);
+
+                let delta = this.rotation - this.smoothRotation;
+                while (delta > Math.PI) delta -= Math.PI * 2;
+                while (delta < -Math.PI) delta += Math.PI * 2;
+                this.smoothRotation += delta * 0.18;
+
+                const radius = this.getRadius();
+                this.particles.forEach((particle, index) => {
+                    particle.update(this.position.x, this.position.y, radius * (0.72 + (index % 6) * 0.08), this.getVisualEnergy(), this.tick);
+                });
+            }
+
+            getVisualEnergy() {
+                return Math.max(this.energy, this.charge + this.burst * 0.35);
+            }
+
+            getRadius() {
+                return (effectSize * 1.55) * this.scale * (1 + this.burst * 0.12);
+            }
+
+            renderFallback(radius) {
+                const glow = this.ctx.createRadialGradient(0, 0, radius * 0.06, 0, 0, radius * 1.2);
+                glow.addColorStop(0, 'rgba(255,255,255,0.96)');
+                glow.addColorStop(0.2, 'rgba(131,228,255,0.95)');
+                glow.addColorStop(0.58, 'rgba(60,179,255,0.6)');
+                glow.addColorStop(1, 'rgba(0,0,0,0)');
+                this.ctx.fillStyle = glow;
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, radius, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            drawSpiralLines(radius, energy) {
+                const lineCount = 4;
+                for (let s = 0; s < lineCount; s++) {
+                    this.ctx.beginPath();
+                    this.ctx.lineWidth = 1.5 + energy * 1.6;
+                    this.ctx.strokeStyle = s % 2 === 0 ? `rgba(180,245,255,${0.32 + energy * 0.35})` : `rgba(72,184,255,${0.22 + energy * 0.28})`;
+                    for (let i = 0; i <= 70; i++) {
+                        const p = i / 70;
+                        const angle = this.tick * 0.08 * (s % 2 === 0 ? 1 : -1) + p * Math.PI * (3.8 + s * 0.22) + s * 1.4;
+                        const localRadius = radius * (0.2 + p * 0.95) * (0.92 + Math.sin(this.tick * 0.05 + s) * 0.04);
+                        const x = Math.cos(angle) * localRadius;
+                        const y = Math.sin(angle) * localRadius * 0.82;
+                        if (i === 0) this.ctx.moveTo(x, y);
+                        else this.ctx.lineTo(x, y);
+                    }
+                    this.ctx.stroke();
+                }
+            }
+
+            drawOuterAura(radius, energy) {
+                const aura = this.ctx.createRadialGradient(0, 0, radius * 0.12, 0, 0, radius * (1.75 + this.burst * 0.35));
+                aura.addColorStop(0, `rgba(187, 246, 255, ${0.25 + energy * 0.22 + this.burst * 0.14})`);
+                aura.addColorStop(0.35, `rgba(86, 202, 255, ${0.16 + energy * 0.22 + this.burst * 0.12})`);
+                aura.addColorStop(0.7, `rgba(46, 133, 255, ${0.05 + energy * 0.12 + this.burst * 0.08})`);
+                aura.addColorStop(1, 'rgba(0,0,0,0)');
+                this.ctx.fillStyle = aura;
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, radius * (1.7 + this.burst * 0.3), 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            drawBurstTrail(radius, energy) {
+                if (this.pushTrail.length < 2) return;
+                this.pushTrail.forEach((node, index) => {
+                    const fade = (1 - index / this.pushTrail.length) * (0.2 + this.burst * 0.7);
+                    const stretch = Math.max(radius * 0.5, Math.hypot(node.vx, node.vy) * 8 + radius * (0.35 + this.burst * 0.9));
+                    const trail = this.ctx.createRadialGradient(
+                        -node.vx * 6,
+                        -node.vy * 6,
+                        radius * 0.05,
+                        -node.vx * 6,
+                        -node.vy * 6,
+                        stretch
+                    );
+                    trail.addColorStop(0, `rgba(170, 245, 255, ${fade * 0.42})`);
+                    trail.addColorStop(0.45, `rgba(74, 195, 255, ${fade * 0.24})`);
+                    trail.addColorStop(1, 'rgba(0,0,0,0)');
+                    this.ctx.fillStyle = trail;
+                    this.ctx.beginPath();
+                    this.ctx.ellipse(-node.vx * 7, -node.vy * 7, stretch, radius * (0.28 + this.burst * 0.08), 0, 0, Math.PI * 2);
+                    this.ctx.fill();
+                });
+            }
+
+            drawCorePulse(radius, energy) {
+                const pulseRadius = radius * (0.52 + Math.sin(this.tick * 0.12) * 0.03 + energy * 0.12 + this.launch * 0.1);
+                const core = this.ctx.createRadialGradient(0, 0, radius * 0.02, 0, 0, pulseRadius);
+                core.addColorStop(0, 'rgba(255,255,255,0.98)');
+                core.addColorStop(0.2, 'rgba(225,252,255,0.92)');
+                core.addColorStop(0.5, 'rgba(130,228,255,0.55)');
+                core.addColorStop(1, 'rgba(0,0,0,0)');
+                this.ctx.fillStyle = core;
+                this.ctx.beginPath();
+                this.ctx.arc(0, 0, pulseRadius, 0, Math.PI * 2);
+                this.ctx.fill();
+            }
+
+            renderShockwave(radius) {
+                if (this.shockwave <= 0.02) return;
+                this.lightCtx.save();
+                this.lightCtx.globalCompositeOperation = 'screen';
+                this.lightCtx.globalAlpha = this.shockwave * 0.7;
+                this.lightCtx.strokeStyle = `rgba(190, 245, 255, ${0.35 + this.shockwave * 0.4})`;
+                this.lightCtx.lineWidth = 4 + this.shockwave * 14;
+                this.lightCtx.beginPath();
+                this.lightCtx.arc(this.position.x, this.position.y, radius * (1.2 + (1 - this.shockwave) * 2.8), 0, Math.PI * 2);
+                this.lightCtx.stroke();
+                this.lightCtx.restore();
+            }
+
+            renderFlash() {
+                if (this.flash <= 0.02) return;
+                this.lightCtx.save();
+                this.lightCtx.globalCompositeOperation = 'screen';
+                this.lightCtx.fillStyle = `rgba(210, 245, 255, ${this.flash * 0.18})`;
+                this.lightCtx.fillRect(0, 0, this.lightCanvas.width, this.lightCanvas.height);
+                this.lightCtx.restore();
+            }
+
+            renderPalmLight(radius, energy) {
+                this.lightCtx.save();
+                this.lightCtx.globalCompositeOperation = 'screen';
+                this.lightCtx.globalAlpha = 0.22 + energy * 0.38 + this.burst * 0.18;
+                const light = this.lightCtx.createRadialGradient(this.position.x, this.position.y, radius * 0.08, this.position.x, this.position.y, radius * (2.6 + this.burst * 0.9));
+                light.addColorStop(0, 'rgba(200,250,255,0.55)');
+                light.addColorStop(0.28, 'rgba(98,204,255,0.24)');
+                light.addColorStop(0.68, 'rgba(64,140,255,0.10)');
+                light.addColorStop(1, 'rgba(0,0,0,0)');
+                this.lightCtx.fillStyle = light;
+                this.lightCtx.beginPath();
+                this.lightCtx.arc(this.position.x, this.position.y, radius * (2.3 + this.burst * 0.6), 0, Math.PI * 2);
+                this.lightCtx.fill();
+                this.lightCtx.restore();
+            }
+
+            render() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                this.lightCtx.clearRect(0, 0, this.lightCanvas.width, this.lightCanvas.height);
+                if (this.opacity <= 0) return;
+
+                const energy = this.getVisualEnergy();
+                const radius = this.getRadius();
+                this.renderFlash();
+                this.renderShockwave(radius);
+                const videoWidth = this.video.videoWidth || 1280;
+                const videoHeight = this.video.videoHeight || 660;
+                const drawWidth = Math.max(260, videoWidth * 0.43 * (effectSize / 70) * this.scale);
+                const drawHeight = drawWidth * (videoHeight / videoWidth);
+
+                this.renderPalmLight(radius, energy);
+
+                this.ctx.save();
+                this.ctx.globalAlpha = this.opacity;
+                this.ctx.globalCompositeOperation = 'lighter';
+                this.ctx.translate(this.position.x, this.position.y);
+                this.ctx.rotate(this.smoothRotation - Math.PI / 2);
+                this.ctx.filter = `drop-shadow(0 0 ${12 + energy * 10 + this.burst * 8}px rgba(79, 195, 247, ${0.28 + energy * 0.16 + this.burst * 0.08}))`;
+
+                this.drawBurstTrail(radius, energy);
+                this.drawOuterAura(radius, energy);
+                this.drawSpiralLines(radius, energy);
+                this.particles.forEach(p => p.draw(this.ctx, energy));
+
+                if (this.videoReady && this.video.readyState >= 2) {
+                    this.ctx.drawImage(this.video, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
+                } else {
+                    this.renderFallback(radius);
+                }
+
+                this.drawCorePulse(radius, energy);
+                this.ctx.restore();
+            }
+        }
+
+        class NarutoGestureApp {
+            constructor() {
+                this.container = document.getElementById('container');
+                this.video = document.getElementById('video');
+                this.canvas = document.getElementById('canvas');
+                this.effectCanvas = document.getElementById('effectCanvas');
+                this.lightCanvas = document.getElementById('lightCanvas');
+                this.impactCanvas = document.getElementById('impactOverlay');
+                this.ctx = this.canvas.getContext('2d');
+                this.effectCtx = this.effectCanvas.getContext('2d');
+                this.lightCtx = this.lightCanvas.getContext('2d');
+                this.impactCtx = this.impactCanvas.getContext('2d');
+                this.loading = document.getElementById('loading');
+                this.gestureStatus = document.getElementById('gestureStatus');
+                this.hands = null;
+                this.camera = null;
+                this.rasenganEffect = null;
+                this.audio = new ChakraAudioEngine();
+                this.prevPalmCenter = null;
+                this.prevPalmDepth = null;
+                this.stability = 0;
+                this.pushStrength = 0;
+                this.shake = 0;
+                this.lastBurstAt = 0;
+                this.lastLaunchAt = 0;
+                this.lastPushCueAt = 0;
+                this.pendingImpact = null;
+                this.impact = null;
+                this.screenCracks = null;
+                this.chargeReady = false;
+                this.chargeHoldFrames = 0;
+                this.launchArmed = false;
+                window.addEventListener('pointerdown', () => this.audio.resume(), { passive: true });
+                window.addEventListener('keydown', () => this.audio.resume(), { passive: true });
+                this.init();
+            }
+
+            async init() {
+                try {
+                    this.resizeCanvas();
+                    window.addEventListener('resize', () => this.resizeCanvas());
+                    this.rasenganEffect = new RasenganVideoEffect(this.effectCanvas, this.effectCtx, this.lightCanvas, this.lightCtx);
+                    await this.initMediaPipe();
+                    await this.initCamera();
+                    this.animate();
+                    this.loading.style.display = 'none';
+                } catch (error) {
+                    console.error(error);
+                    this.showError('Error: ' + error.message);
+                }
+            }
+
+            showError(message) {
+                this.loading.innerHTML = `<div style="color:#ff8d8d"><h2>⚠️ Error</h2><p>${message}</p></div>`;
+            }
+
+            resizeCanvas() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+                this.effectCanvas.width = window.innerWidth;
+                this.effectCanvas.height = window.innerHeight;
+                this.lightCanvas.width = window.innerWidth;
+                this.lightCanvas.height = window.innerHeight;
+                this.impactCanvas.width = window.innerWidth;
+                this.impactCanvas.height = window.innerHeight;
+            }
+
+            async initMediaPipe() {
+                this.hands = new Hands({
+                    locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+                });
+
+                this.hands.setOptions({
+                    maxNumHands: 1,
+                    modelComplexity: 1,
+                    minDetectionConfidence: 0.62,
+                    minTrackingConfidence: 0.62
+                });
+
+                this.hands.onResults((results) => this.onHandsResults(results));
+            }
+
+            async initCamera() {
+                const stream = await navigator.mediaDevices.getUserMedia({
+                    video: { width: 1280, height: 720, facingMode: 'user' }
+                });
+                this.video.srcObject = stream;
+
+                if (typeof Camera === 'undefined') {
+                    this.video.addEventListener('loadeddata', () => {
+                        setInterval(async () => {
+                            if (this.video.readyState === 4) {
+                                await this.hands.send({ image: this.video });
+                            }
+                        }, 33);
+                    });
+                } else {
+                    this.camera = new Camera(this.video, {
+                        onFrame: async () => {
+                            await this.hands.send({ image: this.video });
+                        },
+                        width: 1280,
+                        height: 720
+                    });
+                    this.camera.start();
+                }
+            }
+
+            onHandsResults(results) {
+                this.ctx.save();
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+
+                if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                    const landmarks = results.multiHandLandmarks[0];
+                    this.drawHand(landmarks);
+                    this.analyzeGesture(landmarks);
+                } else {
+                    this.prevPalmCenter = null;
+                    this.prevPalmDepth = null;
+                    this.stability *= 0.85;
+                    this.pushStrength *= 0.75;
+                    this.chargeHoldFrames = 0;
+                    this.chargeReady = false;
+                    this.launchArmed = false;
+                    this.gestureStatus.textContent = 'No Hand Detected';
+                    this.gestureStatus.style.borderColor = '#666';
+                    this.gestureStatus.style.color = '#888';
+                }
+
+                this.ctx.restore();
+            }
+
+            drawHand(landmarks) {
+                const connections = [
+                    [0, 1], [1, 2], [2, 3], [3, 4],
+                    [0, 5], [5, 6], [6, 7], [7, 8],
+                    [0, 9], [9, 10], [10, 11], [11, 12],
+                    [0, 13], [13, 14], [14, 15], [15, 16],
+                    [0, 17], [17, 18], [18, 19], [19, 20],
+                    [5, 9], [9, 13], [13, 17]
+                ];
+
+                this.ctx.strokeStyle = 'rgba(101, 215, 255, 0.86)';
+                this.ctx.lineWidth = 3;
+                connections.forEach(([start, end]) => {
+                    const a = this.landmarkToPixel(landmarks[start]);
+                    const b = this.landmarkToPixel(landmarks[end]);
+                    this.ctx.beginPath();
+                    this.ctx.moveTo(a.x, a.y);
+                    this.ctx.lineTo(b.x, b.y);
+                    this.ctx.stroke();
+                });
+
+                landmarks.forEach((landmark) => {
+                    const p = this.landmarkToPixel(landmark);
+                    this.ctx.beginPath();
+                    this.ctx.arc(p.x, p.y, 4.5, 0, Math.PI * 2);
+                    this.ctx.fillStyle = '#9ff0ff';
+                    this.ctx.fill();
+                });
+            }
+
+            landmarkToPixel(landmark) {
+                return {
+                    x: landmark.x * this.canvas.width,
+                    y: landmark.y * this.canvas.height
+                };
+            }
+
+            analyzeGesture(landmarks) {
+                const wrist = this.landmarkToPixel(landmarks[0]);
+                const indexBase = this.landmarkToPixel(landmarks[5]);
+                const middleBase = this.landmarkToPixel(landmarks[9]);
+                const ringBase = this.landmarkToPixel(landmarks[13]);
+                const pinkyBase = this.landmarkToPixel(landmarks[17]);
+
+                const palmBaseCenter = {
+                    x: (wrist.x + indexBase.x + middleBase.x + ringBase.x + pinkyBase.x) / 5,
+                    y: (wrist.y + indexBase.y + middleBase.y + ringBase.y + pinkyBase.y) / 5
+                };
+
+                const palmCenter = {
+                    x: palmBaseCenter.x * 0.68 + middleBase.x * 0.32,
+                    y: palmBaseCenter.y * 0.8 + middleBase.y * 0.2
+                };
+
+                const rotation = Math.atan2(middleBase.y - wrist.y, middleBase.x - wrist.x);
+                const isOpen = this.isPalmOpen(landmarks);
+                const movement = this.prevPalmCenter
+                    ? Math.hypot(palmCenter.x - this.prevPalmCenter.x, palmCenter.y - this.prevPalmCenter.y)
+                    : 0;
+
+                const palmDepth = -(
+                    landmarks[0].z + landmarks[5].z + landmarks[9].z + landmarks[13].z + landmarks[17].z
+                ) / 5;
+                const depthDelta = this.prevPalmDepth !== null ? (palmDepth - this.prevPalmDepth) : 0;
+                this.prevPalmDepth = palmDepth;
+                this.prevPalmCenter = palmCenter;
+
+                const stableScore = Math.max(0, 1 - movement / 28);
+                this.stability = this.stability * 0.72 + stableScore * 0.28;
+                const forwardPush = Math.max(0, depthDelta * 26);
+                this.pushStrength = this.pushStrength * 0.58 + forwardPush * 0.42;
+
+                this.ctx.save();
+                this.ctx.strokeStyle = 'rgba(115,214,255,0.35)';
+                this.ctx.setLineDash([5, 5]);
+                this.ctx.beginPath();
+                this.ctx.arc(palmCenter.x, palmCenter.y, 22, 0, Math.PI * 2);
+                this.ctx.stroke();
+                this.ctx.restore();
+
+                if (isOpen) {
+                    const now = performance.now();
+
+                    if (this.stability > 0.5) {
+                        this.chargeHoldFrames = Math.min(60, this.chargeHoldFrames + 1);
+                    } else {
+                        this.chargeHoldFrames = Math.max(0, this.chargeHoldFrames - 2);
+                    }
+
+                    const chargeProgress = Math.min(1, this.chargeHoldFrames / 12);
+                    this.chargeReady = chargeProgress > 0.96;
+                    const burstBoost = this.chargeReady ? Math.min(1, this.pushStrength * 2.5) : 0;
+                    const pushCue = this.chargeReady && this.pushStrength > 0.05;
+                    const shouldLaunch = this.chargeReady && this.pushStrength > 0.1 && this.stability > 0.28 && (now - this.lastLaunchAt > 320);
+
+                    if (pushCue && !shouldLaunch && (now - this.lastPushCueAt > 240)) {
+                        this.audio.playPushCue();
+                        this.lastPushCueAt = now;
+                    }
+
+                    if (!this.chargeReady) {
+                        this.gestureStatus.textContent = `Charging Chakra... ${Math.round(chargeProgress * 100)}%`;
+                        this.gestureStatus.style.borderColor = '#ffd36f';
+                        this.gestureStatus.style.color = '#ffd36f';
+                    } else if (shouldLaunch) {
+                        this.gestureStatus.textContent = '🚀 Launch!';
+                        this.gestureStatus.style.borderColor = '#ecffff';
+                        this.gestureStatus.style.color = '#ecffff';
+                        this.audio.playLaunch();
+                        this.shake = Math.max(this.shake, 1);
+                        this.lastLaunchAt = now;
+                        this.pendingImpact = {
+                            dueAt: now + 180,
+                            x: Math.min(window.innerWidth * 0.78, palmCenter.x + Math.cos(rotation - Math.PI / 2) * 260),
+                            y: Math.min(window.innerHeight * 0.72, Math.max(window.innerHeight * 0.18, palmCenter.y + Math.sin(rotation - Math.PI / 2) * 180))
+                        };
+                        this.chargeHoldFrames = 6;
+                        this.chargeReady = false;
+                    } else if (this.chargeReady && this.pushStrength > 0.04) {
+                        this.gestureStatus.textContent = '💥 Push Forward to Launch';
+                        this.gestureStatus.style.borderColor = '#b5efff';
+                        this.gestureStatus.style.color = '#b5efff';
+                        if (now - this.lastBurstAt > 180) {
+                            this.audio.playBurst();
+                            this.shake = Math.max(this.shake, 0.5);
+                            this.lastBurstAt = now;
+                        }
+                    } else {
+                        this.gestureStatus.textContent = '🌀 Rasengan Ready';
+                        this.gestureStatus.style.borderColor = '#63d8ff';
+                        this.gestureStatus.style.color = '#63d8ff';
+                    }
+
+                    this.audio.playCharge(chargeProgress * (this.chargeReady ? 0.9 : 1));
+                    this.rasenganEffect.trigger(palmCenter.x, palmCenter.y, rotation, Math.max(this.stability, chargeProgress), burstBoost, shouldLaunch);
+                } else {
+                    this.gestureStatus.textContent = 'Open Your Hand';
+                    this.gestureStatus.style.borderColor = '#ffa726';
+                    this.gestureStatus.style.color = '#ffa726';
+                    this.audio.stopCharge();
+                }
+            }
+
+            isPalmOpen(landmarks) {
+                const fingers = [[4, 2], [8, 6], [12, 10], [16, 14], [20, 18]];
+                let openCount = 0;
+                fingers.forEach(([tip, base]) => {
+                    const tipPoint = landmarks[tip];
+                    const basePoint = landmarks[base];
+                    const wrist = landmarks[0];
+                    const tipDist = Math.hypot(tipPoint.x - wrist.x, tipPoint.y - wrist.y);
+                    const baseDist = Math.hypot(basePoint.x - wrist.x, basePoint.y - wrist.y);
+                    if (tipDist > baseDist * 1.1) openCount++;
+                });
+                return openCount >= 2;
+            }
+
+            triggerImpact(x, y) {
+                this.impact = { x, y, life: 1 };
+                this.pendingImpact = null;
+                this.audio.playImpact();
+                this.shake = Math.max(this.shake, 1.25);
+                this.spawnScreenCracks(x, y);
+            }
+
+            spawnScreenCracks(x, y) {
+                const fissures = [];
+                const shards = [];
+                const count = 6;
+                for (let i = 0; i < count; i++) {
+                    const baseAngle = (Math.PI * 2 * i) / count + (Math.random() - 0.5) * 0.28;
+                    const segs = [];
+                    let px = x;
+                    let py = y;
+                    const len = 85 + Math.random() * 170;
+                    const steps = 3 + Math.floor(Math.random() * 2);
+                    for (let s = 0; s < steps; s++) {
+                        const part = len / steps;
+                        const angle = baseAngle + Math.sin(s * 0.9 + i) * 0.14 + (Math.random() - 0.5) * 0.18;
+                        px += Math.cos(angle) * part;
+                        py += Math.sin(angle) * part;
+                        segs.push({ x: px, y: py });
+
+                        if (Math.random() < 0.55) {
+                            const branchAngle = angle + (Math.random() > 0.5 ? 1 : -1) * (0.35 + Math.random() * 0.35);
+                            segs.push({
+                                branch: true,
+                                x2: px + Math.cos(branchAngle) * (14 + Math.random() * 34),
+                                y2: py + Math.sin(branchAngle) * (14 + Math.random() * 34)
+                            });
+                        }
+                    }
+                    fissures.push(segs);
+                }
+
+                for (let i = 0; i < 12; i++) {
+                    const angle = Math.random() * Math.PI * 2;
+                    const dist = 18 + Math.random() * 120;
+                    shards.push({
+                        x: x + Math.cos(angle) * dist,
+                        y: y + Math.sin(angle) * dist,
+                        r: 2 + Math.random() * 6,
+                        a: angle,
+                        stretch: 1.4 + Math.random() * 2.4
+                    });
+                }
+
+                this.screenCracks = { x, y, life: 1, fissures, shards, voidLife: 1 };
+            }
+
+            renderImpact() {
+                this.impactCtx.clearRect(0, 0, this.impactCanvas.width, this.impactCanvas.height);
+
+                if (this.impact) {
+                    const t = 1 - this.impact.life;
+                    const r = 40 + t * 240;
+                    this.impactCtx.save();
+                    this.impactCtx.globalCompositeOperation = 'screen';
+                    this.impactCtx.strokeStyle = `rgba(198,245,255,${this.impact.life * 0.75})`;
+                    this.impactCtx.lineWidth = 6 + this.impact.life * 18;
+                    this.impactCtx.beginPath();
+                    this.impactCtx.arc(this.impact.x, this.impact.y, r, 0, Math.PI * 2);
+                    this.impactCtx.stroke();
+
+                    const flare = this.impactCtx.createRadialGradient(this.impact.x, this.impact.y, 0, this.impact.x, this.impact.y, r * 1.3);
+                    flare.addColorStop(0, `rgba(255,255,255,${this.impact.life * 0.45})`);
+                    flare.addColorStop(0.25, `rgba(140,228,255,${this.impact.life * 0.3})`);
+                    flare.addColorStop(1, 'rgba(0,0,0,0)');
+                    this.impactCtx.fillStyle = flare;
+                    this.impactCtx.beginPath();
+                    this.impactCtx.arc(this.impact.x, this.impact.y, r * 1.25, 0, Math.PI * 2);
+                    this.impactCtx.fill();
+
+                    this.impactCtx.fillStyle = `rgba(220,245,255,${this.impact.life * 0.12})`;
+                    this.impactCtx.fillRect(0, 0, this.impactCanvas.width, this.impactCanvas.height);
+                    this.impactCtx.restore();
+
+                    this.impact.life *= 0.86;
+                    if (this.impact.life < 0.03) this.impact = null;
+                }
+
+                if (this.screenCracks) {
+                    this.impactCtx.save();
+                    this.impactCtx.globalCompositeOperation = 'screen';
+
+                    const collapse = this.impactCtx.createRadialGradient(
+                        this.screenCracks.x, this.screenCracks.y, 10,
+                        this.screenCracks.x, this.screenCracks.y, 260
+                    );
+                    collapse.addColorStop(0, `rgba(10,18,35,${this.screenCracks.voidLife * 0.42})`);
+                    collapse.addColorStop(0.22, `rgba(12,20,42,${this.screenCracks.voidLife * 0.32})`);
+                    collapse.addColorStop(0.55, `rgba(20,28,65,${this.screenCracks.voidLife * 0.16})`);
+                    collapse.addColorStop(1, 'rgba(0,0,0,0)');
+                    this.impactCtx.fillStyle = collapse;
+                    this.impactCtx.beginPath();
+                    this.impactCtx.arc(this.screenCracks.x, this.screenCracks.y, 260, 0, Math.PI * 2);
+                    this.impactCtx.fill();
+
+                    const coreGlow = this.impactCtx.createRadialGradient(
+                        this.screenCracks.x, this.screenCracks.y, 0,
+                        this.screenCracks.x, this.screenCracks.y, 250
+                    );
+                    coreGlow.addColorStop(0, `rgba(255,255,255,${this.screenCracks.life * 0.34})`);
+                    coreGlow.addColorStop(0.12, `rgba(195,245,255,${this.screenCracks.life * 0.32})`);
+                    coreGlow.addColorStop(0.32, `rgba(98,210,255,${this.screenCracks.life * 0.28})`);
+                    coreGlow.addColorStop(0.62, `rgba(47,110,255,${this.screenCracks.life * 0.18})`);
+                    coreGlow.addColorStop(1, 'rgba(0,0,0,0)');
+                    this.impactCtx.fillStyle = coreGlow;
+                    this.impactCtx.beginPath();
+                    this.impactCtx.arc(this.screenCracks.x, this.screenCracks.y, 250, 0, Math.PI * 2);
+                    this.impactCtx.fill();
+
+                    this.impactCtx.shadowBlur = 10;
+                    this.impactCtx.shadowColor = 'rgba(90,205,255,0.72)';
+                    this.impactCtx.lineWidth = 2.6 + this.screenCracks.life * 3.8;
+                    for (const segs of this.screenCracks.fissures) {
+                        let last = { x: this.screenCracks.x, y: this.screenCracks.y };
+                        for (const p of segs) {
+                            if (p.branch) {
+                                this.impactCtx.strokeStyle = `rgba(145,225,255,${this.screenCracks.life * 0.5})`;
+                                this.impactCtx.beginPath();
+                                this.impactCtx.moveTo(last.x, last.y);
+                                this.impactCtx.lineTo(p.x2, p.y2);
+                                this.impactCtx.stroke();
+                                continue;
+                            }
+                            const grad = this.impactCtx.createLinearGradient(last.x, last.y, p.x, p.y);
+                            grad.addColorStop(0, `rgba(255,255,255,${this.screenCracks.life * 0.86})`);
+                            grad.addColorStop(0.18, `rgba(195,245,255,${this.screenCracks.life * 0.82})`);
+                            grad.addColorStop(0.42, `rgba(98,215,255,${this.screenCracks.life * 0.72})`);
+                            grad.addColorStop(0.78, `rgba(46,106,255,${this.screenCracks.life * 0.44})`);
+                            grad.addColorStop(1, `rgba(15,40,120,${this.screenCracks.life * 0.18})`);
+                            this.impactCtx.strokeStyle = grad;
+                            this.impactCtx.beginPath();
+                            this.impactCtx.moveTo(last.x, last.y);
+                            this.impactCtx.lineTo(p.x, p.y);
+                            this.impactCtx.stroke();
+
+                            this.impactCtx.strokeStyle = `rgba(255,255,255,${this.screenCracks.life * 0.18})`;
+                            this.impactCtx.lineWidth = 0.8 + this.screenCracks.life * 1.3;
+                            this.impactCtx.beginPath();
+                            this.impactCtx.moveTo(last.x, last.y);
+                            this.impactCtx.lineTo(p.x, p.y);
+                            this.impactCtx.stroke();
+                            this.impactCtx.lineWidth = 2.6 + this.screenCracks.life * 3.8;
+                            last = p;
+                        }
+                    }
+
+                    for (const shard of this.screenCracks.shards) {
+                        this.impactCtx.save();
+                        this.impactCtx.translate(shard.x, shard.y);
+                        this.impactCtx.rotate(shard.a);
+                        const shardGrad = this.impactCtx.createLinearGradient(-shard.r, 0, shard.r * shard.stretch, 0);
+                        shardGrad.addColorStop(0, `rgba(255,255,255,${this.screenCracks.life * 0.5})`);
+                        shardGrad.addColorStop(0.25, `rgba(175,240,255,${this.screenCracks.life * 0.46})`);
+                        shardGrad.addColorStop(0.6, `rgba(88,190,255,${this.screenCracks.life * 0.34})`);
+                        shardGrad.addColorStop(1, 'rgba(0,0,0,0)');
+                        this.impactCtx.fillStyle = shardGrad;
+                        this.impactCtx.beginPath();
+                        this.impactCtx.ellipse(0, 0, shard.r * shard.stretch * 1.25, shard.r * 1.1, 0, 0, Math.PI * 2);
+                        this.impactCtx.fill();
+                        this.impactCtx.restore();
+                    }
+
+                    const vignette = this.impactCtx.createRadialGradient(
+                        this.screenCracks.x, this.screenCracks.y, 40,
+                        this.screenCracks.x, this.screenCracks.y, Math.max(this.impactCanvas.width, this.impactCanvas.height) * 0.7
+                    );
+                    vignette.addColorStop(0, 'rgba(0,0,0,0)');
+                    vignette.addColorStop(0.45, `rgba(4,8,18,${this.screenCracks.voidLife * 0.05})`);
+                    vignette.addColorStop(0.75, `rgba(3,6,14,${this.screenCracks.voidLife * 0.16})`);
+                    vignette.addColorStop(1, `rgba(0,0,0,${this.screenCracks.voidLife * 0.28})`);
+                    this.impactCtx.fillStyle = vignette;
+                    this.impactCtx.fillRect(0, 0, this.impactCanvas.width, this.impactCanvas.height);
+                    this.impactCtx.restore();
+
+                    this.screenCracks.life *= 0.88;
+                    this.screenCracks.voidLife *= 0.9;
+                    if (this.screenCracks.life < 0.05) this.screenCracks = null;
+                }
+            }
+
+            animate() {
+                const now = performance.now();
+                this.rasenganEffect.update();
+                this.rasenganEffect.render();
+
+                if (this.pendingImpact && now >= this.pendingImpact.dueAt) {
+                    this.triggerImpact(this.pendingImpact.x, this.pendingImpact.y);
+                }
+                this.renderImpact();
+
+                this.shake *= 0.84;
+                if (this.shake < 0.01) this.shake = 0;
+                const shakeX = (Math.random() * 2 - 1) * this.shake * 6;
+                const shakeY = (Math.random() * 2 - 1) * this.shake * 5;
+                this.container.style.setProperty('--shake-x', `${shakeX}px`);
+                this.container.style.setProperty('--shake-y', `${shakeY}px`);
+
+                requestAnimationFrame(() => this.animate());
+            }
+        }
+
+        window.addEventListener('DOMContentLoaded', () => {
+            new NarutoGestureApp();
+        });
+    </script>
+</body>
+</html>
